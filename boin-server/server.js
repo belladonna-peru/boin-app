@@ -24,23 +24,33 @@ async function initDb() {
     CREATE TABLE IF NOT EXISTS mensajes (
       id SERIAL PRIMARY KEY, de TEXT, para TEXT, texto TEXT, ts BIGINT
     );
+    CREATE TABLE IF NOT EXISTS momentos (
+      id SERIAL PRIMARY KEY, de TEXT, texto TEXT, color INT DEFAULT 0, ts BIGINT
+    );
+    CREATE TABLE IF NOT EXISTS likes (
+      momento_id INT, de TEXT, PRIMARY KEY (momento_id, de)
+    );
   `);
   console.log('Base de datos lista ✅');
 }
 
 const server = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('Boin server OK 🧡 v4 con Postgres');
+  res.end('Boin server OK 🧡 v5 momentos');
 });
 const io = new Server(server, { cors: { origin: '*' } });
 
-// En memoria solo lo volátil: quién está conectado ahora
-const online = {};    // userId -> Set(socketIds)
-const socketDe = {};  // socketId -> userId
+const online = {};
+const socketDe = {};
 
 function sendTo(userId, event, payload) {
   const set = online[userId];
   if (set) set.forEach(sid => io.to(sid).emit(event, payload));
+}
+
+async function nombreDe(id) {
+  const r = await pool.query(`SELECT n FROM usuarios WHERE id=$1`, [id]);
+  return r.rowCount ? r.rows[0].n : 'Pata';
 }
 
 async function estadoDe(id) {
@@ -108,9 +118,8 @@ io.on('connection', (socket) => {
       const ya = await pool.query(`SELECT 1 FROM amistades WHERE a=$1 AND b=$2`, [yo, d.para]);
       if (ya.rowCount) return;
       await pool.query(`INSERT INTO solicitudes (de,para) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [yo, d.para]);
-      const u = await pool.query(`SELECT n FROM usuarios WHERE id=$1`, [yo]);
       await avisarEstado(d.para);
-      sendTo(d.para, 'aviso', '🧡 ' + (u.rows[0] ? u.rows[0].n : 'Alguien') + ' te envió una solicitud');
+      sendTo(d.para, 'aviso', '🧡 ' + (await nombreDe(yo)) + ' te envió una solicitud');
     } catch (e) { console.log('solicitud error', e.message); }
   });
 
@@ -122,8 +131,7 @@ io.on('connection', (socket) => {
       if (d.acepta) {
         await pool.query(`INSERT INTO amistades VALUES ($1,$2),($2,$1) ON CONFLICT DO NOTHING`, [yo, d.de]);
         await pool.query(`INSERT INTO comparto VALUES ($1,$2),($2,$1) ON CONFLICT DO NOTHING`, [yo, d.de]);
-        const u = await pool.query(`SELECT n FROM usuarios WHERE id=$1`, [yo]);
-        sendTo(d.de, 'aviso', '🎉 ' + (u.rows[0] ? u.rows[0].n : 'Tu pata') + ' aceptó tu solicitud: ¡ya son patas!');
+        sendTo(d.de, 'aviso', '🎉 ' + (await nombreDe(yo)) + ' aceptó tu solicitud: ¡ya son patas!');
       }
       await avisarEstado(yo);
       await avisarEstado(d.de);
@@ -147,10 +155,11 @@ io.on('connection', (socket) => {
     try {
       const yo = socketDe[socket.id];
       if (!yo || !data) return;
+      const n = await nombreDe(yo);
       const r = await pool.query(
-        `SELECT c.con, u.n FROM comparto c JOIN usuarios u ON u.id=$1
+        `SELECT c.con FROM comparto c
          WHERE c.de=$1 AND EXISTS(SELECT 1 FROM amistades a WHERE a.a=$1 AND a.b=c.con)`, [yo]);
-      r.rows.forEach(row => sendTo(row.con, 'ubi', { ...data, id: yo, n: row.n }));
+      r.rows.forEach(row => sendTo(row.con, 'ubi', { ...data, id: yo, n }));
     } catch (e) { console.log('ubi error', e.message); }
   });
 
@@ -176,8 +185,58 @@ io.on('connection', (socket) => {
         `SELECT de, para, texto, ts FROM mensajes
          WHERE (de=$1 AND para=$2) OR (de=$2 AND para=$1)
          ORDER BY ts DESC LIMIT 50`, [yo, d.con]);
-      socket.emit('historial', { con: d.con, lista: r.rows.reverse() });
+      socket.emit('historial', { con: d.con, lista: r.rows.reverse().map(x => ({ ...x, ts: Number(x.ts) })) });
     } catch (e) { console.log('historial error', e.message); }
+  });
+
+  // ===== MOMENTOS =====
+
+  socket.on('momento-publicar', async (d) => {
+    try {
+      const yo = socketDe[socket.id];
+      if (!yo || !d || !d.texto || !d.texto.trim()) return;
+      const ts = Date.now();
+      const r = await pool.query(
+        `INSERT INTO momentos (de,texto,color,ts) VALUES ($1,$2,$3,$4) RETURNING id`,
+        [yo, d.texto.trim().slice(0, 200), d.color || 0, ts]);
+      const m = { id: r.rows[0].id, de: yo, n: await nombreDe(yo), texto: d.texto.trim().slice(0, 200), color: d.color || 0, ts, likes: 0, meGusta: false };
+      sendTo(yo, 'momento-nuevo', m);
+      const ams = await pool.query(`SELECT b FROM amistades WHERE a=$1`, [yo]);
+      ams.rows.forEach(row => sendTo(row.b, 'momento-nuevo', m));
+    } catch (e) { console.log('momento error', e.message); }
+  });
+
+  socket.on('feed', async () => {
+    try {
+      const yo = socketDe[socket.id];
+      if (!yo) return;
+      const r = await pool.query(
+        `SELECT m.id, m.de, u.n, m.texto, m.color, m.ts,
+           (SELECT COUNT(*) FROM likes l WHERE l.momento_id=m.id)::int AS likes,
+           EXISTS(SELECT 1 FROM likes l WHERE l.momento_id=m.id AND l.de=$1) AS megusta
+         FROM momentos m JOIN usuarios u ON u.id=m.de
+         WHERE m.de=$1 OR EXISTS(SELECT 1 FROM amistades a WHERE a.a=$1 AND a.b=m.de)
+         ORDER BY m.ts DESC LIMIT 30`, [yo]);
+      socket.emit('feed', r.rows.map(x => ({ id: x.id, de: x.de, n: x.n, texto: x.texto, color: x.color, ts: Number(x.ts), likes: x.likes, meGusta: x.megusta })));
+    } catch (e) { console.log('feed error', e.message); }
+  });
+
+  socket.on('momento-like', async (d) => {
+    try {
+      const yo = socketDe[socket.id];
+      if (!yo || !d || !d.id) return;
+      const ya = await pool.query(`SELECT 1 FROM likes WHERE momento_id=$1 AND de=$2`, [d.id, yo]);
+      if (ya.rowCount) await pool.query(`DELETE FROM likes WHERE momento_id=$1 AND de=$2`, [d.id, yo]);
+      else await pool.query(`INSERT INTO likes VALUES ($1,$2) ON CONFLICT DO NOTHING`, [d.id, yo]);
+      const c = await pool.query(`SELECT COUNT(*)::int AS n FROM likes WHERE momento_id=$1`, [d.id]);
+      const payload = { id: d.id, likes: c.rows[0].n, meGusta: !ya.rowCount };
+      socket.emit('momento-like', payload);
+      const own = await pool.query(`SELECT de FROM momentos WHERE id=$1`, [d.id]);
+      if (own.rowCount && own.rows[0].de !== yo) {
+        sendTo(own.rows[0].de, 'momento-like', { id: d.id, likes: c.rows[0].n });
+        if (!ya.rowCount) sendTo(own.rows[0].de, 'aviso', '♥ A ' + (await nombreDe(yo)) + ' le gustó tu momento');
+      }
+    } catch (e) { console.log('like error', e.message); }
   });
 
   socket.on('escribiendo', (d) => {
@@ -196,5 +255,5 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
-initDb().then(() => server.listen(PORT, () => console.log('Boin server v4 en puerto', PORT)))
+initDb().then(() => server.listen(PORT, () => console.log('Boin server v5 en puerto', PORT)))
   .catch(e => { console.log('Error de base de datos:', e.message); server.listen(PORT); });
