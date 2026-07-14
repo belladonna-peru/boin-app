@@ -1,28 +1,54 @@
-{
-  "expo": {
-    "name": "Boin",
-    "slug": "boin-app",
-    "version": "0.1.0",
-    "orientation": "portrait",
-    "userInterfaceStyle": "automatic",
-    "splash": { "backgroundColor": "#14121F" },
-    "ios": {
-      "infoPlist": { "UIBackgroundModes": ["location"] }
-    },
-    "android": {
-      "package": "com.boin.app",
-      "permissions": ["ACCESS_BACKGROUND_LOCATION"]
-    },
-    "plugins": [
-      ["expo-location", {
-        "locationAlwaysAndWhenInUsePermission": "Boin usa tu ubicación para que tus patas te vean en el mapa, solo con quienes TÚ compartas, incluso con la app cerrada si lo permites.",
-        "locationWhenInUsePermission": "Boin usa tu ubicación para mostrarte en el mapa solo a quienes tú elijas.",
-        "isAndroidBackgroundLocationEnabled": true
-      }],
-      ["expo-image-picker", {
-        "photosPermission": "Boin usa tus fotos para publicar tus momentos.",
-        "cameraPermission": "Boin usa tu cámara para capturar tus momentos."
-      }]
-    ]
+  {
+    "expo": {
+      "name": "Boin",
+      "slug": "boin-app",
+      "version": "0.1.0",
+      "orientation": "portrait",
+      "userInterfaceStyle": "automatic",
+      "splash": {
+        "backgroundColor": "#14121F"
+      },
+      "ios": {
+        "infoPlist": {
+          "UIBackgroundModes": [
+            "location"
+          ]
+        }
+      },
+      "android": {
+        "package": "com.boin.app",
+        "permissions": [
+          "ACCESS_BACKGROUND_LOCATION",
+          "android.permission.ACCESS_COARSE_LOCATION",
+          "android.permission.ACCESS_FINE_LOCATION",
+          "android.permission.ACCESS_BACKGROUND_LOCATION",
+          "android.permission.FOREGROUND_SERVICE",
+          "android.permission.FOREGROUND_SERVICE_LOCATION"
+        ]
+      },
+      "plugins": [
+        [
+          "expo-location",
+          {
+            "locationAlwaysAndWhenInUsePermission": "Boin usa tu ubicación para que tus patas te vean en el mapa, solo con quienes TÚ compartas, incluso con la app cerrada si lo permites.",
+            "locationWhenInUsePermission": "Boin usa tu ubicación para mostrarte en el mapa solo a quienes tú elijas.",
+            "isAndroidBackgroundLocationEnabled": true
+          }
+        ],
+        [
+        "expo-image-picker",
+        {
+          "photosPermission": "Boin usa tus fotos para publicar tus momentos.",
+          "cameraPermission": "Boin usa tu cámara para capturar tus momentos."
+        }
+      ]
+
+        
+      ],
+      "extra": {
+        "eas": {
+          "projectId": "cced4208-d5f6-41aa-a8ce-d18dd051863e"
+        }
+      }
+    }
   }
-}
