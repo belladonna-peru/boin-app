@@ -189,8 +189,6 @@ io.on('connection', (socket) => {
     } catch (e) { console.log('historial error', e.message); }
   });
 
-  // ===== MOMENTOS =====
-
   socket.on('momento-publicar', async (d) => {
     try {
       const yo = socketDe[socket.id];
@@ -229,8 +227,7 @@ io.on('connection', (socket) => {
       if (ya.rowCount) await pool.query(`DELETE FROM likes WHERE momento_id=$1 AND de=$2`, [d.id, yo]);
       else await pool.query(`INSERT INTO likes VALUES ($1,$2) ON CONFLICT DO NOTHING`, [d.id, yo]);
       const c = await pool.query(`SELECT COUNT(*)::int AS n FROM likes WHERE momento_id=$1`, [d.id]);
-      const payload = { id: d.id, likes: c.rows[0].n, meGusta: !ya.rowCount };
-      socket.emit('momento-like', payload);
+      socket.emit('momento-like', { id: d.id, likes: c.rows[0].n, meGusta: !ya.rowCount });
       const own = await pool.query(`SELECT de FROM momentos WHERE id=$1`, [d.id]);
       if (own.rowCount && own.rows[0].de !== yo) {
         sendTo(own.rows[0].de, 'momento-like', { id: d.id, likes: c.rows[0].n });
