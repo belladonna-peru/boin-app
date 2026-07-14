@@ -1,3 +1,6 @@
+import * as TaskManager from 'expo-task-manager';
+import { TAREA_UBI } from '../tareaUbi';
+import '../tareaUbi';
 import React, { useEffect, useState, useRef } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, Alert, Platform } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
@@ -124,6 +127,26 @@ export default function MapScreen() {
             }
           }
         );
+        // Ubicación en segundo plano: sigue viva aunque cierres la app
+      try {
+        const bg = await Location.requestBackgroundPermissionsAsync();
+        if (bg.status === 'granted') {
+          const yaCorre = await Location.hasStartedLocationUpdatesAsync(TAREA_UBI).catch(() => false);
+          if (!yaCorre) {
+            await Location.startLocationUpdatesAsync(TAREA_UBI, {
+              accuracy: Location.Accuracy.Balanced,
+              timeInterval: 15000,
+              distanceInterval: 30,
+              showsBackgroundLocationIndicator: true,
+              foregroundService: {
+                notificationTitle: 'Boin 🧡',
+                notificationBody: 'Compartiendo tu ubi con tus patas (tócala para abrir)',
+                notificationColor: '#FF4E3A',
+              },
+            });
+          }
+        }
+      } catch (e) { /* En Expo Go el fondo no está disponible; en tu APK propio sí */ }
       }
 
       socket.on('connect', onConnect);

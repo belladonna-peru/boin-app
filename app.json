@@ -1,29 +1,28 @@
 {
   "expo": {
-    "name": "boin-app-v2",
-    "slug": "boin-app-v2",
-    "version": "1.0.0",
+    "name": "Boin",
+    "slug": "boin-app",
+    "version": "0.1.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
-    "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
+    "userInterfaceStyle": "automatic",
+    "splash": { "backgroundColor": "#14121F" },
     "ios": {
-      "supportsTablet": true
+      "infoPlist": { "UIBackgroundModes": ["location"] }
     },
     "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
-      },
-      "edgeToEdgeEnabled": true
+      "package": "com.boin.app",
+      "permissions": ["ACCESS_BACKGROUND_LOCATION"]
     },
-    "web": {
-      "favicon": "./assets/favicon.png"
-    }
+    "plugins": [
+      ["expo-location", {
+        "locationAlwaysAndWhenInUsePermission": "Boin usa tu ubicación para que tus patas te vean en el mapa, solo con quienes TÚ compartas, incluso con la app cerrada si lo permites.",
+        "locationWhenInUsePermission": "Boin usa tu ubicación para mostrarte en el mapa solo a quienes tú elijas.",
+        "isAndroidBackgroundLocationEnabled": true
+      }],
+      ["expo-image-picker", {
+        "photosPermission": "Boin usa tus fotos para publicar tus momentos.",
+        "cameraPermission": "Boin usa tu cámara para capturar tus momentos."
+      }]
+    ]
   }
 }

@@ -1,8 +1,10 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, TextInput, TouchableOpacity, FlatList, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, FlatList, Alert, Image, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../theme';
 import { socket } from '../socket';
+import { CLOUD_URL, CLOUD_PRESET } from '../config';
 
 const COLORES_MOM = ['#3C3489', '#0F6E56', '#993C1D', '#72243E'];
 
@@ -19,6 +21,8 @@ export default function HomeScreen() {
   const [feed, setFeed] = useState([]);
   const [txt, setTxt] = useState('');
   const [color, setColor] = useState(0);
+  const [foto, setFoto] = useState(null);      // uri local elegida
+  const [subiendo, setSubiendo] = useState(false);
   const yoRef = useRef({ id: null });
 
   useEffect(() => {
@@ -53,10 +57,39 @@ export default function HomeScreen() {
     };
   }, []);
 
-  const publicar = () => {
-    if (!txt.trim()) return;
-    socket.emit('momento-publicar', { texto: txt.trim(), color });
-    setTxt('');
+  const elegirFoto = async (deCamara) => {
+    const fn = deCamara ? ImagePicker.launchCameraAsync : ImagePicker.launchImageLibraryAsync;
+    if (deCamara) {
+      const p = await ImagePicker.requestCameraPermissionsAsync();
+      if (p.status !== 'granted') return Alert.alert('Boin', 'Necesito permiso de cámara 📷');
+    }
+    const r = await fn({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.7, allowsEditing: true, aspect: [4, 3] });
+    if (!r.canceled && r.assets && r.assets[0]) setFoto(r.assets[0].uri);
+  };
+
+  const subirFoto = async (uri) => {
+    const form = new FormData();
+    form.append('file', { uri, type: 'image/jpeg', name: 'momento.jpg' });
+    form.append('upload_preset', CLOUD_PRESET);
+    const res = await fetch(CLOUD_URL, { method: 'POST', body: form });
+    const json = await res.json();
+    if (!json.secure_url) throw new Error(json.error ? json.error.message : 'No se pudo subir');
+    return json.secure_url;
+  };
+
+  const publicar = async () => {
+    if (!txt.trim() && !foto) return;
+    try {
+      setSubiendo(true);
+      let fotoUrl = null;
+      if (foto) fotoUrl = await subirFoto(foto);
+      socket.emit('momento-publicar', { texto: txt.trim(), color, foto: fotoUrl });
+      setTxt(''); setFoto(null);
+    } catch (e) {
+      Alert.alert('Boin', 'No se pudo subir la foto: ' + e.message + '\nRevisa tu CLOUD_NAME y el preset en src/config.js');
+    } finally {
+      setSubiendo(false);
+    }
   };
 
   return (
@@ -74,14 +107,26 @@ export default function HomeScreen() {
           placeholder="¿Qué está pasando? Publica tu momento…" placeholderTextColor={t.mut}
           value={txt} onChangeText={setTxt} multiline maxLength={200}
         />
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
-          {COLORES_MOM.map((c, i) => (
+        {foto && (
+          <View style={{ marginTop: 8 }}>
+            <Image source={{ uri: foto }} style={{ width: '100%', height: 160, borderRadius: 12 }} />
+            <TouchableOpacity onPress={() => setFoto(null)}
+              style={{ position: 'absolute', top: 6, right: 6, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 14, width: 28, height: 28, justifyContent: 'center', alignItems: 'center' }}>
+              <Text style={{ color: '#fff' }}>✕</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10 }}>
+          <TouchableOpacity onPress={() => elegirFoto(true)} style={{ marginRight: 10 }}><Text style={{ fontSize: 20 }}>📷</Text></TouchableOpacity>
+          <TouchableOpacity onPress={() => elegirFoto(false)} style={{ marginRight: 12 }}><Text style={{ fontSize: 20 }}>🖼️</Text></TouchableOpacity>
+          {!foto && COLORES_MOM.map((c, i) => (
             <TouchableOpacity key={i} onPress={() => setColor(i)}
-              style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: c, marginRight: 8, borderWidth: color === i ? 2.5 : 0, borderColor: '#fff' }} />
+              style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: c, marginRight: 7, borderWidth: color === i ? 2.5 : 0, borderColor: '#fff' }} />
           ))}
           <View style={{ flex: 1 }} />
-          <TouchableOpacity onPress={publicar} style={{ backgroundColor: t.acc, borderRadius: 14, paddingVertical: 9, paddingHorizontal: 18 }}>
-            <Text style={{ color: '#fff', fontWeight: '700' }}>¡Boin! 🚀</Text>
+          <TouchableOpacity onPress={publicar} disabled={subiendo}
+            style={{ backgroundColor: subiendo ? t.border : t.acc, borderRadius: 14, paddingVertical: 9, paddingHorizontal: 18 }}>
+            {subiendo ? <ActivityIndicator color="#fff" size="small" /> : <Text style={{ color: '#fff', fontWeight: '700' }}>¡Boin! 🚀</Text>}
           </TouchableOpacity>
         </View>
       </View>
@@ -99,9 +144,16 @@ export default function HomeScreen() {
               <Text style={{ color: t.txt, fontWeight: '700' }}>{item.de === yoRef.current.id ? 'Tú' : item.n}</Text>
               <Text style={{ color: t.mut, fontSize: 11 }}>· {hace(item.ts)}</Text>
             </View>
-            <View style={{ minHeight: 130, backgroundColor: COLORES_MOM[item.color % COLORES_MOM.length], justifyContent: 'center', alignItems: 'center', padding: 20 }}>
-              <Text style={{ color: '#fff', fontSize: 19, fontWeight: '800', textAlign: 'center' }}>{item.texto}</Text>
-            </View>
+            {item.foto ? (
+              <View>
+                <Image source={{ uri: item.foto }} style={{ width: '100%', height: 280 }} resizeMode="cover" />
+                {!!item.texto && <Text style={{ color: t.txt, fontSize: 14, padding: 12, paddingBottom: 0 }}>{item.texto}</Text>}
+              </View>
+            ) : (
+              <View style={{ minHeight: 130, backgroundColor: COLORES_MOM[item.color % COLORES_MOM.length], justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+                <Text style={{ color: '#fff', fontSize: 19, fontWeight: '800', textAlign: 'center' }}>{item.texto}</Text>
+              </View>
+            )}
             <View style={{ flexDirection: 'row', padding: 12, gap: 18 }}>
               <TouchableOpacity onPress={() => socket.emit('momento-like', { id: item.id })}>
                 <Text style={{ color: item.meGusta ? t.acc : t.mut, fontWeight: item.meGusta ? '700' : '400' }}>♥ {item.likes}</Text>
