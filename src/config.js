@@ -1,4 +1,4 @@
-export const SERVER_URL = 'boin-server-production.up.railway.app';
+export const SERVER_URL = 'https://boin-server-production.up.railway.app';
 
 // Cloudinary (fotos de momentos)
 export const CLOUD_NAME = 'dtmpfvgry';

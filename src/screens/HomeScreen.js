@@ -1,3 +1,4 @@
+import ActivityBell from '../ActivityBell';
 import React, { useEffect, useState, useRef } from 'react';
 import { View, Text, TextInput, TouchableOpacity, FlatList, Alert, Image, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -94,12 +95,12 @@ export default function HomeScreen() {
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: t.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 18, paddingTop: 54, marginBottom: 10 }}>
-        <Text style={{ color: t.acc, fontSize: 24, fontWeight: '800', letterSpacing: 1.5 }}>BOIN</Text>
-        <TouchableOpacity onPress={() => setMode(mode === 'dark' ? 'light' : 'dark')}>
-          <Text style={{ fontSize: 18 }}>{mode === 'dark' ? '🌙' : '☀️'}</Text>
-        </TouchableOpacity>
-      </View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 18 }}>
+          <ActivityBell t={t} />
+          <TouchableOpacity onPress={() => setMode(mode === 'dark' ? 'light' : 'dark')}>
+            <Text style={{ fontSize: 18 }}>{mode === 'dark' ? '🌙' : '☀️'}</Text>
+          </TouchableOpacity>
+        </View>
 
       <View style={{ backgroundColor: t.card, borderColor: t.border, borderWidth: 1, borderRadius: 18, marginHorizontal: 14, marginBottom: 10, padding: 12 }}>
         <TextInput
