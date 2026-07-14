@@ -30,13 +30,26 @@ async function initDb() {
     CREATE TABLE IF NOT EXISTS likes (
       momento_id INT, de TEXT, PRIMARY KEY (momento_id, de)
     );
+    ALTER TABLE momentos ADD COLUMN IF NOT EXISTS foto TEXT;
   `);
   console.log('Base de datos lista ✅');
 }
 
 const server = http.createServer((req, res) => {
+  if (req.method === 'POST' && req.url === '/ubi') {
+    let body = '';
+    req.on('data', c => body += c);
+    req.on('end', async () => {
+      try {
+        const d = JSON.parse(body);
+        if (d && d.id && d.lat) await repartirUbi(d.id, d.lat, d.lng);
+        res.writeHead(200); res.end('ok');
+      } catch (e) { res.writeHead(400); res.end('error'); }
+    });
+    return;
+  }
   res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('Boin server OK 🧡 v5 momentos');
+  res.end('Boin server OK 🧡 v6 fondo');
 });
 const io = new Server(server, { cors: { origin: '*' } });
 
@@ -51,6 +64,14 @@ function sendTo(userId, event, payload) {
 async function nombreDe(id) {
   const r = await pool.query(`SELECT n FROM usuarios WHERE id=$1`, [id]);
   return r.rowCount ? r.rows[0].n : 'Pata';
+}
+
+async function repartirUbi(yo, lat, lng) {
+  const n = await nombreDe(yo);
+  const r = await pool.query(
+    `SELECT c.con FROM comparto c
+     WHERE c.de=$1 AND EXISTS(SELECT 1 FROM amistades a WHERE a.a=$1 AND a.b=c.con)`, [yo]);
+  r.rows.forEach(row => sendTo(row.con, 'ubi', { lat, lng, id: yo, n }));
 }
 
 async function estadoDe(id) {
@@ -155,11 +176,7 @@ io.on('connection', (socket) => {
     try {
       const yo = socketDe[socket.id];
       if (!yo || !data) return;
-      const n = await nombreDe(yo);
-      const r = await pool.query(
-        `SELECT c.con FROM comparto c
-         WHERE c.de=$1 AND EXISTS(SELECT 1 FROM amistades a WHERE a.a=$1 AND a.b=c.con)`, [yo]);
-      r.rows.forEach(row => sendTo(row.con, 'ubi', { ...data, id: yo, n }));
+      await repartirUbi(yo, data.lat, data.lng);
     } catch (e) { console.log('ubi error', e.message); }
   });
 
@@ -192,12 +209,15 @@ io.on('connection', (socket) => {
   socket.on('momento-publicar', async (d) => {
     try {
       const yo = socketDe[socket.id];
-      if (!yo || !d || !d.texto || !d.texto.trim()) return;
+      if (!yo || !d) return;
+      const texto = (d.texto || '').trim().slice(0, 200);
+      const foto = (d.foto && String(d.foto).startsWith('https://')) ? String(d.foto).slice(0, 500) : null;
+      if (!texto && !foto) return;
       const ts = Date.now();
       const r = await pool.query(
-        `INSERT INTO momentos (de,texto,color,ts) VALUES ($1,$2,$3,$4) RETURNING id`,
-        [yo, d.texto.trim().slice(0, 200), d.color || 0, ts]);
-      const m = { id: r.rows[0].id, de: yo, n: await nombreDe(yo), texto: d.texto.trim().slice(0, 200), color: d.color || 0, ts, likes: 0, meGusta: false };
+        `INSERT INTO momentos (de,texto,color,ts,foto) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+        [yo, texto, d.color || 0, ts, foto]);
+      const m = { id: r.rows[0].id, de: yo, n: await nombreDe(yo), texto, color: d.color || 0, ts, foto, likes: 0, meGusta: false };
       sendTo(yo, 'momento-nuevo', m);
       const ams = await pool.query(`SELECT b FROM amistades WHERE a=$1`, [yo]);
       ams.rows.forEach(row => sendTo(row.b, 'momento-nuevo', m));
@@ -209,13 +229,13 @@ io.on('connection', (socket) => {
       const yo = socketDe[socket.id];
       if (!yo) return;
       const r = await pool.query(
-        `SELECT m.id, m.de, u.n, m.texto, m.color, m.ts,
+        `SELECT m.id, m.de, u.n, m.texto, m.color, m.ts, m.foto,
            (SELECT COUNT(*) FROM likes l WHERE l.momento_id=m.id)::int AS likes,
            EXISTS(SELECT 1 FROM likes l WHERE l.momento_id=m.id AND l.de=$1) AS megusta
          FROM momentos m JOIN usuarios u ON u.id=m.de
          WHERE m.de=$1 OR EXISTS(SELECT 1 FROM amistades a WHERE a.a=$1 AND a.b=m.de)
          ORDER BY m.ts DESC LIMIT 30`, [yo]);
-      socket.emit('feed', r.rows.map(x => ({ id: x.id, de: x.de, n: x.n, texto: x.texto, color: x.color, ts: Number(x.ts), likes: x.likes, meGusta: x.megusta })));
+      socket.emit('feed', r.rows.map(x => ({ id: x.id, de: x.de, n: x.n, texto: x.texto, color: x.color, ts: Number(x.ts), foto: x.foto, likes: x.likes, meGusta: x.megusta })));
     } catch (e) { console.log('feed error', e.message); }
   });
 
